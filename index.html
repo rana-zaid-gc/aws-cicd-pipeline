@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline — Automated Deployment to AWS</title>
+<style>
+  :root {
+    --ink: #0b1220;
+    --slate: #1b2433;
+    --paper: #f5f3ee;
+    --paper-dim: #e8e4da;
+    --line: #2a3445;
+    --signal: #ff5d2e;     /* deploy / motion */
+    --signal-soft: #ffe2d8;
+    --go: #19c37d;         /* success state */
+    --wire: #6b7585;
+    --mono: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---------- top status bar ---------- */
+  .statusbar {
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--wire);
+    letter-spacing: 0.04em;
+  }
+  .statusbar .wrap {
+    display: flex; justify-content: space-between; align-items: center;
+    height: 44px;
+  }
+  .statusbar .dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--go); margin-right: 8px;
+    box-shadow: 0 0 0 0 rgba(25,195,125,0.6);
+    animation: pulse 2.4s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(25,195,125,0.5); }
+    70% { box-shadow: 0 0 0 7px rgba(25,195,125,0); }
+    100% { box-shadow: 0 0 0 0 rgba(25,195,125,0); }
+  }
+  .statusbar b { color: var(--paper); font-weight: 500; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 110px 0 70px; position: relative; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--signal); margin-bottom: 26px;
+  }
+  .hero h1 {
+    font-size: clamp(2.6rem, 7vw, 5rem);
+    line-height: 1.02; font-weight: 800; letter-spacing: -0.03em;
+    max-width: 14ch;
+  }
+  .hero h1 .ghost { color: var(--wire); }
+  .hero p.lead {
+    margin-top: 30px; max-width: 56ch; font-size: 1.18rem; color: var(--paper-dim);
+  }
+
+  /* the animated pipeline line in the hero */
+  .flowline {
+    margin-top: 56px;
+    display: flex; align-items: center; gap: 0;
+    font-family: var(--mono); font-size: 13px; flex-wrap: wrap;
+  }
+  .node {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 15px; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--slate); white-space: nowrap;
+    position: relative;
+  }
+  .node .pin {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--signal);
+  }
+  .seg {
+    height: 1px; width: 30px; background: var(--line); position: relative; overflow: hidden;
+  }
+  .seg::after {
+    content: ""; position: absolute; top: 0; left: -40%;
+    width: 40%; height: 100%; background: var(--signal);
+    animation: travel 2.8s linear infinite;
+  }
+  .seg.s2::after { animation-delay: 0.5s; }
+  .seg.s3::after { animation-delay: 1.0s; }
+  .seg.s4::after { animation-delay: 1.5s; }
+  .seg.s5::after { animation-delay: 2.0s; }
+  @keyframes travel {
+    0% { left: -40%; } 100% { left: 100%; }
+  }
+
+  /* ---------- section frame ---------- */
+  section { padding: 80px 0; border-top: 1px solid var(--line); }
+  .sec-label {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--wire); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .sec-label::before {
+    content: ""; width: 22px; height: 1px; background: var(--signal);
+  }
+  h2 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 700;
+    letter-spacing: -0.02em; margin-bottom: 24px;
+  }
+  .body-text { max-width: 64ch; color: var(--paper-dim); font-size: 1.08rem; }
+  .body-text + .body-text { margin-top: 18px; }
+  .body-text strong { color: var(--paper); font-weight: 600; }
+
+  /* ---------- architecture diagram ---------- */
+  .arch {
+    margin-top: 40px;
+    background: var(--slate); border: 1px solid var(--line); border-radius: 12px;
+    padding: 34px; overflow-x: auto;
+  }
+  .arch-row {
+    display: flex; align-items: stretch; gap: 0; min-width: 720px;
+  }
+  .stage {
+    flex: 1; text-align: center; padding: 22px 14px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--ink);
+    position: relative;
+  }
+  .stage .icon { font-family: var(--mono); font-size: 11px; color: var(--signal); letter-spacing: 0.1em; }
+  .stage .name { font-weight: 700; margin-top: 10px; font-size: 1.02rem; }
+  .stage .desc { color: var(--wire); font-size: 0.82rem; margin-top: 6px; font-family: var(--mono); }
+  .arrow {
+    display: flex; align-items: center; justify-content: center;
+    width: 44px; color: var(--signal); font-size: 1.3rem; flex-shrink: 0;
+  }
+  .arch-note {
+    margin-top: 22px; font-family: var(--mono); font-size: 12.5px; color: var(--wire);
+    text-align: center; letter-spacing: 0.03em;
+  }
+  .arch-note b { color: var(--go); }
+
+  /* ---------- tech stack grid ---------- */
+  .stack {
+    margin-top: 40px; display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px;
+    background: var(--line); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden;
+  }
+  .tool { background: var(--slate); padding: 24px 22px; transition: background 0.18s; }
+  .tool:hover { background: #212c3d; }
+  .tool .role {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--signal);
+  }
+  .tool .tname { font-weight: 700; font-size: 1.15rem; margin: 8px 0 6px; }
+  .tool .tdesc { color: var(--paper-dim); font-size: 0.92rem; }
+
+  /* ---------- footer ---------- */
+  footer {
+    border-top: 1px solid var(--line); padding: 50px 0 70px;
+    font-family: var(--mono); font-size: 13px; color: var(--wire);
+  }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  footer a { color: var(--signal); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 600px) {
+    .hero { padding: 70px 0 50px; }
+    .flowline { font-size: 11px; }
+    .seg { width: 18px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .seg::after { animation: none; left: 0; width: 100%; opacity: 0.4; }
+    .statusbar .dot { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- status bar: reads like a live deployment header -->
+  <div class="statusbar">
+    <div class="wrap">
+      <span><span class="dot"></span>pipeline: <b>passing</b></span>
+      <span>region: <b>eu-north-1</b> &nbsp;·&nbsp; target: <b>AWS EC2</b></span>
+    </div>
+  </div>
+
+  <!-- hero -->
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">Continuous Deployment · AWS</div>
+      <h1>A push to <span class="ghost">main</span> ships a live site to the cloud.</h1>
+      <p class="lead">An end-to-end CI/CD pipeline: code pushed to GitHub triggers Jenkins, which deploys a website to an Nginx server running on AWS EC2 — automatically, on every commit.</p>
+
+      <div class="flowline">
+        <div class="node"><span class="pin"></span>git push</div>
+        <div class="seg"></div>
+        <div class="node"><span class="pin"></span>GitHub</div>
+        <div class="seg s2"></div>
+        <div class="node"><span class="pin"></span>Jenkins</div>
+        <div class="seg s3"></div>
+        <div class="node"><span class="pin"></span>SSH → EC2</div>
+        <div class="seg s4"></div>
+        <div class="node"><span class="pin"></span>Nginx</div>
+        <div class="seg s5"></div>
+        <div class="node"><span class="pin"></span>live</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- overview -->
+  <section id="overview">
+    <div class="wrap">
+      <div class="sec-label">Overview</div>
+      <h2>What this project does</h2>
+      <p class="body-text">This is a <strong>continuous deployment pipeline</strong> that turns a single <code>git push</code> into a live website update — with no manual steps in between. When code lands on the <strong>main</strong> branch, GitHub notifies Jenkins through a webhook. Jenkins connects to a cloud server over SSH, pulls the latest code, and publishes it to an Nginx web server.</p>
+      <p class="body-text">The earlier version of this project ran entirely on a local virtual machine. This version <strong>graduates it to the cloud</strong>: the deployment target is now an <strong>AWS EC2 instance</strong> with a real public IP, so the site is reachable on the open internet and webhooks reach Jenkins directly — no tunneling workarounds needed.</p>
+      <p class="body-text">The goal was to learn how the core pieces of a deployment workflow fit together: source control as the trigger, an automation server as the engine, secure SSH as the bridge, and a cloud web server as the destination.</p>
+    </div>
+  </section>
+
+  <!-- architecture -->
+  <section id="architecture">
+    <div class="wrap">
+      <div class="sec-label">Architecture</div>
+      <h2>How a commit becomes a deployment</h2>
+      <p class="body-text">Each stage hands off to the next. The whole sequence runs in seconds, triggered automatically by the push.</p>
+
+      <div class="arch">
+        <div class="arch-row">
+          <div class="stage">
+            <div class="icon">01</div>
+            <div class="name">GitHub</div>
+            <div class="desc">push to main</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="stage">
+            <div class="icon">02</div>
+            <div class="name">Webhook</div>
+            <div class="desc">notifies Jenkins</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="stage">
+            <div class="icon">03</div>
+            <div class="name">Jenkins</div>
+            <div class="desc">runs pipeline</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="stage">
+            <div class="icon">04</div>
+            <div class="name">AWS EC2</div>
+            <div class="desc">SSH + deploy</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="stage">
+            <div class="icon">05</div>
+            <div class="name">Nginx</div>
+            <div class="desc">serves the site</div>
+          </div>
+        </div>
+        <div class="arch-note">Jenkins authenticates to EC2 with a stored SSH key · <b>deploy completes automatically</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- tech stack -->
+  <section id="stack">
+    <div class="wrap">
+      <div class="sec-label">Tech Stack</div>
+      <h2>Tools in the pipeline</h2>
+
+      <div class="stack">
+        <div class="tool">
+          <div class="role">Automation</div>
+          <div class="tname">Jenkins</div>
+          <div class="tdesc">Runs the pipeline that builds and deploys on every push.</div>
+        </div>
+        <div class="tool">
+          <div class="role">Cloud</div>
+          <div class="tname">AWS EC2</div>
+          <div class="tdesc">Ubuntu server hosting the site with a real public IP.</div>
+        </div>
+        <div class="tool">
+          <div class="role">Web Server</div>
+          <div class="tname">Nginx</div>
+          <div class="tdesc">Serves the static site to visitors on port 80.</div>
+        </div>
+        <div class="tool">
+          <div class="role">Source Control</div>
+          <div class="tname">Git &amp; GitHub</div>
+          <div class="tdesc">Hosts the code and triggers the pipeline via webhook.</div>
+        </div>
+        <div class="tool">
+          <div class="role">Access</div>
+          <div class="tname">SSH</div>
+          <div class="tdesc">Secure, key-based connection from Jenkins to the server.</div>
+        </div>
+        <div class="tool">
+          <div class="role">OS</div>
+          <div class="tname">Ubuntu 22.04</div>
+          <div class="tdesc">The Linux distribution running on the EC2 instance.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span>aws-cicd-pipeline · built by rana-zaid-gc</span>
+      <span>deployed via <a href="#architecture">the pipeline above</a></span>
+    </div>
+  </footer>
+
+</body>
+</html>
