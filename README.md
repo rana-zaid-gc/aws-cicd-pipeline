@@ -4,7 +4,7 @@ A CI/CD pipeline that automatically deploys a website to an **Nginx server runni
 
 This project evolved from an earlier **local** version (Jenkins + Nginx on a VirtualBox VM) into a **cloud deployment** on AWS — replacing the local VM with a real EC2 instance that has a public IP, reachable from anywhere.
 
-🔗 **Live site:** ``
+🔗 **Live site:** `https://aws-cicd-pipeline.vercel.app/`
 
 ---
 
