@@ -1,0 +1,19 @@
+pipeline {
+    agent any
+    stages {
+        stage('Deploy to AWS EC2') {
+            steps {
+                sshagent(['vm-ssh']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no ubuntu@51.20.55.182 "
+                            cd ~/app &&
+                            git pull origin main &&
+                            cp -r ~/app/*.html /var/www/html/ &&
+                            echo 'Deployed to AWS successfully'
+                        "
+                    '''
+                }
+            }
+        }
+    }
+}
